@@ -49,6 +49,12 @@ jobs:
                   # Windows runner uses PowerShell by default; force bash via shell
                   bun build ./index.ts --compile --outfile "$OUT"
 
+            - name: Make executable (Unix) and strip
+              if: runner.os != 'Windows'
+              run: |
+                  chmod +x dist/*
+                  command -v strip >/dev/null && strip dist/* || true
+
             - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
