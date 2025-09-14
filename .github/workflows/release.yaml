@@ -1,0 +1,80 @@
+name: Release on tag
+
+on:
+    push:
+        tags:
+            - "v*"
+
+jobs:
+    build:
+        name: Build binaries
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target_os: linux
+                      ext: ""
+                    - os: macos-latest
+                      target_os: macos
+                      ext: ""
+                    - os: windows-latest
+                      target_os: windows
+                      ext: ".exe"
+        runs-on: ${{ matrix.os }}
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v1
+              with:
+                  bun-version: latest
+
+            - name: Install deps
+              run: bun install --frozen-lockfile
+
+            - name: Build
+              shell: bash
+              run: |
+                  mkdir -p dist
+                  # name: capp-<os>-<arch>
+                  ARCH=$(uname -m)
+                  # Normalize arch names a bit
+                  if [ "$ARCH" = "x86_64" ]; then ARCH=amd64; fi
+                  if [ "$ARCH" = "aarch64" ]; then ARCH=arm64; fi
+
+                  OUT="dist/capp-${{ matrix.target_os }}-${ARCH}${{ matrix.ext }}"
+                  # Windows runner uses PowerShell by default; force bash via shell
+                  bun build ./index.ts --compile --outfile "$OUT"
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: binaries-${{ matrix.target_os }}
+                  path: dist/*
+
+    release:
+        name: Create GitHub Release
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+
+            - name: Gather files
+              run: |
+                  mkdir -p dist
+                  find artifacts -type f -exec mv {} dist/ \;
+                  ls -lah dist
+
+            - name: Create Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: dist/*
+                  generate_release_notes: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,19 @@
+{
+  "name": "capp-mgmt",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@azure/arm-appcontainers": "^2.2.0",
+    "@azure/identity": "^4.12.0",
+    "arg": "^5.0.2",
+    "listr2": "^9.0.3",
+    "table": "^6.9.0"
+  }
+}
