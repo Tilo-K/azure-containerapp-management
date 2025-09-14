@@ -6,22 +6,8 @@ on:
             - "v*"
 
 jobs:
-    build:
-        name: Build binaries
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      target_os: linux
-                      ext: ""
-                    - os: macos-latest
-                      target_os: macos
-                      ext: ""
-                    - os: windows-latest
-                      target_os: windows
-                      ext: ".exe"
-        runs-on: ${{ matrix.os }}
+    build-and-release:
+        runs-on: ubuntu-latest
 
         steps:
             - name: Checkout
@@ -35,47 +21,35 @@ jobs:
             - name: Install deps
               run: bun install --frozen-lockfile
 
-            - name: Build
-              shell: bash
+            - name: Build all targets
               run: |
+                  set -euo pipefail
                   mkdir -p dist
-                  # name: capp-<os>-<arch>
-                  ARCH=$(uname -m)
-                  # Normalize arch names a bit
-                  if [ "$ARCH" = "x86_64" ]; then ARCH=amd64; fi
-                  if [ "$ARCH" = "aarch64" ]; then ARCH=arm64; fi
 
-                  OUT="dist/capp-${{ matrix.target_os }}-${ARCH}${{ matrix.ext }}"
-                  # Windows runner uses PowerShell by default; force bash via shell
-                  bun build ./index.ts --compile --outfile "$OUT"
+                  # Matrix of targets and output filenames
+                  build() {
+                    target="$1"
+                    outfile="$2"
+                    echo "Building $target -> $outfile"
+                    bun build --compile --target="$target" ./index.ts --outfile "dist/$outfile"
+                  }
 
-            - name: Make executable (Unix) and strip
-              if: runner.os != 'Windows'
-              run: |
-                  chmod +x dist/*
-                  command -v strip >/dev/null && strip dist/* || true
+                  # Linux glibc
+                  build bun-linux-x64        capp-linux-amd64
+                  build bun-linux-arm64      capp-linux-arm64
+                  # Linux musl (often best for static-like portability in containers/distros like Alpine)
+                  build bun-linux-x64-musl   capp-linux-amd64-musl
+                  build bun-linux-arm64-musl capp-linux-arm64-musl
 
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: binaries-${{ matrix.target_os }}
-                  path: dist/*
+                  # macOS
+                  build bun-darwin-x64       capp-macos-amd64
+                  build bun-darwin-arm64     capp-macos-arm64
 
-    release:
-        name: Create GitHub Release
-        needs: build
-        runs-on: ubuntu-latest
-        steps:
-            - name: Download artifacts
-              uses: actions/download-artifact@v4
-              with:
-                  path: artifacts
+                  # Windows (x64 only; .exe extension is added automatically if omitted, but we add it explicitly)
+                  build bun-windows-x64      capp-windows-amd64.exe
 
-            - name: Gather files
-              run: |
-                  mkdir -p dist
-                  find artifacts -type f -exec mv {} dist/ \;
-                  ls -lah dist
+                  # Make Unix binaries executable
+                  chmod +x dist/* || true
 
             - name: Create Release
               uses: softprops/action-gh-release@v2
