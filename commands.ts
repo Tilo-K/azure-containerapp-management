@@ -84,7 +84,7 @@ async function getApps(glob: string = "*") {
     return apps;
 }
 
-async function listApps(glob: string = "*") {
+async function listApps(glob: string = "*", nums: boolean = false) {
     const rows = [
         [
             "Name",
@@ -95,6 +95,10 @@ async function listApps(glob: string = "*") {
             "Status",
         ],
     ];
+    if (nums) {
+        rows[0] = ["#", ...rows[0]!];
+    }
+    let i = 0;
     for (const app of await getApps(glob)) {
         const parsed = parseContainerAppId(app.id!);
 
@@ -103,17 +107,48 @@ async function listApps(glob: string = "*") {
                 ?.map((c) => c.image?.split("/").at(-1) ?? "")
                 .join("\n") ?? "";
 
-        rows.push([
+        let arr = [
             app.name ?? "No name",
             parsed.subscriptionId.split("-").at(-1) ?? "",
             parsed.resourceGroupName,
             app.location,
             images,
             app.runningStatus ?? "Unknown",
-        ]);
+        ];
+
+        if (nums) {
+            arr = [i.toString(), ...arr];
+            i++;
+        }
+        rows.push(arr);
     }
 
     console.log(table(rows));
+}
+
+async function followLogs(glob: string = "*") {
+    const apps = await getApps(glob);
+
+    let app = apps[0];
+    if (apps.length > 1) {
+        await listApps(glob, true);
+        const i = parseInt(prompt("Which app do you want to follow?") ?? "-1");
+        if (i < 0 || i >= apps.length) {
+            console.log("Invalid index");
+            return;
+        }
+        app = apps[i];
+    }
+    if (!app) {
+        console.log("No apps found");
+        return;
+    }
+    const parsed = parseContainerAppId(app.id!);
+    console.log(
+        `az containerapp logs show --name ${app.name} --resource-group ${parsed.resourceGroupName} --follow`
+    );
+
+    await $`az containerapp logs show --name ${app.name} --resource-group ${parsed.resourceGroupName} --follow`;
 }
 
 async function stopApps(glob: string = "*") {
@@ -179,4 +214,4 @@ async function restartApps(glob: string = "*") {
     await startApps(glob);
 }
 
-export { getApps, listApps, stopApps, startApps, restartApps };
+export { getApps, listApps, stopApps, startApps, restartApps, followLogs };

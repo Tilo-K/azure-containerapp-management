@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
 import arg from "arg";
-import { stopApps, startApps, restartApps, listApps } from "./commands";
+import {
+    stopApps,
+    startApps,
+    restartApps,
+    listApps,
+    followLogs,
+} from "./commands";
 
 async function main() {
     const args = arg({
@@ -9,12 +15,14 @@ async function main() {
         "--start": Boolean,
         "--restart": Boolean,
         "--glob": String,
+        "--logs": String,
 
         "-l": "--list",
         "-g": "--glob",
         "-s": "--start",
         "-r": "--restart",
         "-t": "--stop",
+        "-fl": "--logs",
     });
 
     let glob = "*";
@@ -22,7 +30,9 @@ async function main() {
         glob = args["--glob"];
     }
 
-    if (args["--stop"]) {
+    if (args["--logs"]) {
+        await followLogs(args["--logs"]);
+    } else if (args["--stop"]) {
         await listApps(glob);
         if (prompt("Are you sure you want to stop these apps? [y/N]") !== "y") {
             return;
