@@ -31,7 +31,7 @@ jobs:
                     target="$1"
                     outfile="$2"
                     echo "Building $target -> $outfile"
-                    bun build --compile --minify --bytecode --target="$target" ./index.ts --outfile "dist/$outfile"
+                    bun build --compile --minify --target="$target" ./index.ts --outfile "dist/$outfile"
                   }
 
                   # Linux glibc
