@@ -15,6 +15,7 @@ type AzSubscription = {
     subscriptionId: string;
     tenantId: string;
     state: "Enabled" | string;
+    tenantDisplayName: string;
 };
 
 type IdParts = {
@@ -25,10 +26,13 @@ type IdParts = {
 
 let cachedSubscriptions: AzSubscription[] | undefined = undefined;
 
-async function getCliSubscriptions(): Promise<AzSubscription[]> {
+async function getCliSubscriptions(
+    tenantGlob: string,
+): Promise<AzSubscription[]> {
     if (cachedSubscriptions) {
         return cachedSubscriptions;
     }
+    const g = new Glob(tenantGlob);
     const res = await $`az account list --all --output json`.quiet();
 
     const subs = JSON.parse(res.text()) as any[];
@@ -39,7 +43,8 @@ async function getCliSubscriptions(): Promise<AzSubscription[]> {
                 s.id &&
                 s.tenantId &&
                 s.state === "Enabled" &&
-                !s.name.includes("Test")
+                !s.tenantDisplayName.includes("Test") &&
+                g.match(s.tenantDisplayName),
         )
         .map((s) => ({
             id: s.id,
@@ -47,6 +52,7 @@ async function getCliSubscriptions(): Promise<AzSubscription[]> {
             subscriptionId: s.id,
             tenantId: s.tenantId,
             state: s.state,
+            tenantDisplayName: s.tenantDisplayName,
         }));
 
     cachedSubscriptions = sbs;
@@ -55,20 +61,22 @@ async function getCliSubscriptions(): Promise<AzSubscription[]> {
 
 function parseContainerAppId(id: string): IdParts {
     const m = id.match(
-        /^\/subscriptions\/([^/]+)\/resourceGroups\/([^/]+)\/providers\/Microsoft\.App\/containerApps\/([^/]+)$/i
+        /^\/subscriptions\/([^/]+)\/resourceGroups\/([^/]+)\/providers\/Microsoft\.App\/containerApps\/([^/]+)$/i,
     );
     if (!m) throw new Error("Invalid Container App resource ID");
     return { subscriptionId: m[1]!, resourceGroupName: m[2]!, name: m[3]! };
 }
 
-async function getApps(glob: string = "*") {
+async function getApps(glob: string = "*", tenantGlob: string) {
     const apps = [];
-    const credential = new AzureCliCredential();
-    const subscriptions = await getCliSubscriptions();
+    const subscriptions = await getCliSubscriptions(tenantGlob);
 
     const pattern = new Glob(glob);
 
     for (const sub of subscriptions) {
+        const credential = new AzureCliCredential({
+            tenantId: sub.tenantId,
+        });
         const client = new ContainerAppsAPIClient(credential, sub.id);
 
         const result = await client.containerApps.listBySubscription();
@@ -84,7 +92,11 @@ async function getApps(glob: string = "*") {
     return apps;
 }
 
-async function listApps(glob: string = "*", nums: boolean = false) {
+async function listApps(
+    tenantGlob: string,
+    glob: string = "*",
+    nums: boolean = false,
+) {
     const rows = [
         [
             "Name",
@@ -99,7 +111,7 @@ async function listApps(glob: string = "*", nums: boolean = false) {
         rows[0] = ["#", ...rows[0]!];
     }
     let i = 0;
-    for (const app of await getApps(glob)) {
+    for (const app of await getApps(glob, tenantGlob)) {
         const parsed = parseContainerAppId(app.id!);
 
         const images =
@@ -126,12 +138,12 @@ async function listApps(glob: string = "*", nums: boolean = false) {
     console.log(table(rows));
 }
 
-async function followLogs(glob: string = "*") {
-    const apps = await getApps(glob);
+async function followLogs(tenantGlob: string, glob: string = "*") {
+    const apps = await getApps(glob, tenantGlob);
 
     let app = apps[0];
     if (apps.length > 1) {
-        await listApps(glob, true);
+        await listApps(tenantGlob, glob, true);
         const i = parseInt(prompt("Which app do you want to follow?") ?? "-1");
         if (i < 0 || i >= apps.length) {
             console.log("Invalid index");
@@ -145,20 +157,22 @@ async function followLogs(glob: string = "*") {
     }
     const parsed = parseContainerAppId(app.id!);
     console.log(
-        `az containerapp logs show --name ${app.name} --resource-group ${parsed.resourceGroupName} --follow`
+        `az containerapp logs show --name ${app.name} --resource-group ${parsed.resourceGroupName} --follow`,
     );
 
     await $`az containerapp logs show --name ${app.name} --resource-group ${parsed.resourceGroupName} --follow`;
 }
 
-async function stopApps(glob: string = "*") {
+async function stopApps(tenantGlob: string, glob: string = "*") {
     const g = new Glob(glob);
-    const credential = new AzureCliCredential();
-    const subscriptions = await getCliSubscriptions();
+    const subscriptions = await getCliSubscriptions(tenantGlob);
 
     const tasks = [];
 
     for (const sub of subscriptions) {
+        const credential = new AzureCliCredential({
+            tenantId: sub.tenantId,
+        });
         const client = new ContainerAppsAPIClient(credential, sub.id);
 
         for await (const app of client.containerApps.listBySubscription()) {
@@ -169,7 +183,7 @@ async function stopApps(glob: string = "*") {
 
             const prom = client.containerApps.beginStopAndWait(
                 parsed.resourceGroupName,
-                parsed.name
+                parsed.name,
             );
 
             tasks.push({ title: " " + parsed.name, task: () => prom });
@@ -180,10 +194,10 @@ async function stopApps(glob: string = "*") {
     await new Listr(tasks as any).run();
 }
 
-async function startApps(glob: string = "*") {
+async function startApps(tenantGlob: string, glob: string = "*") {
     const g = new Glob(glob);
     const credential = new AzureCliCredential();
-    const subscriptions = await getCliSubscriptions();
+    const subscriptions = await getCliSubscriptions(tenantGlob);
 
     const tasks = [];
 
@@ -198,7 +212,7 @@ async function startApps(glob: string = "*") {
 
             const prom = client.containerApps.beginStartAndWait(
                 parsed.resourceGroupName,
-                parsed.name
+                parsed.name,
             );
 
             tasks.push({ title: " " + parsed.name, task: () => prom });
@@ -209,9 +223,9 @@ async function startApps(glob: string = "*") {
     await new Listr(tasks as any).run();
 }
 
-async function restartApps(glob: string = "*") {
-    await stopApps(glob);
-    await startApps(glob);
+async function restartApps(tenantGlob: string, glob: string = "*") {
+    await stopApps(tenantGlob, glob);
+    await startApps(tenantGlob, glob);
 }
 
 export { getApps, listApps, stopApps, startApps, restartApps, followLogs };

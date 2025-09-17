@@ -16,36 +16,42 @@ async function main() {
         "--restart": Boolean,
         "--glob": String,
         "--logs": String,
-
+        "--tenant": String,
         "-l": "--list",
         "-g": "--glob",
         "-s": "--start",
         "-r": "--restart",
         "-t": "--stop",
         "-fl": "--logs",
+        "-te": "--tenant",
     });
 
     let glob = "*";
+    let tenant = "*";
     if (args["--glob"]) {
         glob = args["--glob"];
+    }
+
+    if (args["--tenant"]) {
+        tenant = args["--tenant"];
     }
 
     if (args["--logs"]) {
         await followLogs(args["--logs"]);
     } else if (args["--stop"]) {
-        await listApps(glob);
+        await listApps(tenant, glob);
         if (prompt("Are you sure you want to stop these apps? [y/N]") !== "y") {
             return;
         }
-        stopApps(glob);
+        stopApps(tenant, glob);
     } else if (args["--start"]) {
-        await listApps(glob);
+        await listApps(tenant, glob);
         if (
             prompt("Are you sure you want to start these apps? [y/N]") !== "y"
         ) {
             return;
         }
-        startApps(glob);
+        startApps(tenant, glob);
     } else if (args["--restart"]) {
         await listApps(glob);
         if (
@@ -53,9 +59,9 @@ async function main() {
         ) {
             return;
         }
-        restartApps(glob);
+        restartApps(tenant, glob);
     } else {
-        listApps(glob);
+        listApps(tenant, glob);
     }
 }
 
