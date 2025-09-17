@@ -53,7 +53,7 @@ async function main() {
         }
         startApps(tenant, glob);
     } else if (args["--restart"]) {
-        await listApps(glob);
+        await listApps(tenant, glob);
         if (
             prompt("Are you sure you want to restart these apps? [y/N]") !== "y"
         ) {
