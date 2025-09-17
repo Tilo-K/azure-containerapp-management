@@ -37,7 +37,7 @@ async function main() {
     }
 
     if (args["--logs"]) {
-        await followLogs(args["--logs"]);
+        await followLogs(tenant, args["--logs"]);
     } else if (args["--stop"]) {
         await listApps(tenant, glob);
         if (prompt("Are you sure you want to stop these apps? [y/N]") !== "y") {
